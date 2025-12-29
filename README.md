@@ -23,5 +23,10 @@ It automates the extraction of critical electrochemical parameters from research
 3.  Add your API key in a `.env` file.
 4.  Run the agent: `python main.py`
 
+## 🚀 Features (v2.0 Update)
+* **Batch Processing:** Automatically scans and processes all PDF files in a folder. 📂
+* **Excel Export:** Saves extracted data (Tafel slope, Overpotential, etc.) into a CSV file for easy plotting. 📊
+* **Auto-Filtering:** Skips empty or unreadable files automatically.
 ---
+
 *Created by a Micro- and Nanotechnology student at Hochschule München.*
