@@ -1,65 +1,71 @@
 import os
+import glob
+import csv
 from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
 
-# 1. تنظیمات اولیه (لود کردن کلید)
+# تنظیمات اولیه
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# لیست مقالاتی که آپلود کردید
-pdf_files = [
-    "AECM-6995-typeset+manuscript (2).pdf",
-    "AECM5423-typeset+manuscript (1).pdf"
-]
+# 1. پیدا کردن اتوماتیک تمام فایل‌های PDF در پوشه
+pdf_files = glob.glob("*.pdf")
+print(f"📂 تعداد {len(pdf_files)} مقاله PDF پیدا شد. شروع تحلیل...\n")
 
-def analyze_catalyst(filename):
-    print(f"\n📄 در حال خواندن فایل: {filename}...")
-    
-    try:
-        # خواندن متن PDF
-        reader = PdfReader(filename)
-        text = ""
-        # خواندن 8 صفحه اول (معمولاً نتایج در همین صفحات است)
-        for page in reader.pages[:8]:
-            text += page.extract_text()
+# اسم فایل خروجی اکسل
+output_csv = "HER_Catalyst_Data.csv"
+
+# 2. باز کردن فایل اکسل برای نوشتن
+with open(output_csv, mode='w', newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    # نوشتن سرستون‌های جدول
+    writer.writerow(["File Name", "Catalyst Name", "Overpotential (mV)", "Tafel Slope (mV/dec)", "Summary"])
+
+    for filename in pdf_files:
+        print(f"🔄 در حال پردازش: {filename}...")
+        try:
+            # خواندن PDF
+            reader = PdfReader(filename)
+            text = ""
+            # خواندن 8 صفحه اول (معمولاً نتایج اصلی اینجاست)
+            for page in reader.pages[:8]:
+                text += page.extract_text()
+
+            # اگر فایل خالی بود رد شو
+            if len(text) < 100: continue
+
+            # ارسال به هوش مصنوعی با دستور خاص برای فرمت CSV
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a data extractor. Output ONLY comma-separated values."},
+                    {"role": "user", "content": f"""
+                    Analyze this text about HER catalysts. Find the BEST catalyst.
+                    Output the response in this EXACT format (one line only):
+                    CatalystName, Overpotential_Value_Only, Tafel_Value_Only, Very_Short_Conclusion
+
+                    Example:
+                    Ni-Mo-S, 120, 45, Good acidic stability
+                    
+                    If specific number is not found, write "N/A".
+                    
+                    Text:
+                    {text[:12000]}
+                    """}
+                ]
+            )
             
-        print("   🧠 هوش مصنوعی در حال استخراج داده‌ها...")
-        
-        # ارسال به GPT برای تحلیل
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are an expert Electrochemist specializing in Hydrogen Evolution Reaction (HER)."},
-                {"role": "user", "content": f"""
-                Analyze this research paper text. Identify the BEST catalyst mentioned.
-                Extract these specific metrics:
-                
-                1. **Catalyst Composition**: (e.g., MoS2, NiFe-LDH)
-                2. **Overpotential**: (at 10 mA/cm², in mV)
-                3. **Tafel Slope**: (mV/dec)
-                4. **Stability**: (Duration in hours or cycles)
-                
-                If precise numbers are not found, state "Not found".
-                
-                Paper Text Snippet:
-                {text[:12000]}
-                """}
-            ]
-        )
-        
-        # نمایش نتیجه
-        print("-" * 40)
-        print(f"نتایج آنالیز برای: {filename}")
-        print(response.choices[0].message.content)
-        print("-" * 40)
-        
-    except FileNotFoundError:
-        print(f"❌ خطا: فایل {filename} پیدا نشد! لطفاً اسم فایل را چک کنید.")
-    except Exception as e:
-        print(f"❌ خطای غیرمنتظره: {e}")
+            # تمیز کردن جواب و تبدیل به لیست
+            ai_output = response.choices[0].message.content.strip()
+            data_parts = ai_output.split(',')
+            
+            # ذخیره در فایل اکسل
+            # (اسم فایل PDF را هم اولش اضافه می‌کنیم که بدانید این داده مال کدام مقاله است)
+            writer.writerow([filename] + data_parts)
+            print(f"   ✅ داده‌ها ذخیره شد.")
 
-# اجرای برنامه
-print("--- شروع جستجو برای بهترین کاتالیزور ---")
-for f in pdf_files:
-    analyze_catalyst(f)
+        except Exception as e:
+            print(f"   ❌ خطا در فایل {filename}: {e}")
+
+print(f"\n🎉 تمام شد! فایل '{output_csv}' را باز کنید.")
